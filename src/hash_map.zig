@@ -8,6 +8,22 @@ const Ctrl = enum(i8) {
     deleted = -2, // 0b11111110
     sentinel = -1, // 0b11111111
     // full = 0b0xxxxxxx
+
+    fn isFull(ctrl: i8) bool {
+        return ctrl >= 0;
+    }
+
+    fn isEmpty(ctrl: i8) bool {
+        return ctrl == Ctrl.empty;
+    }
+
+    fn isDeleted(ctrl: i8) bool {
+        return ctrl == Ctrl.deleted;
+    }
+
+    fn isEmptyOrDeleted(ctrl: i8) bool {
+        return ctrl < Ctrl.sentinel;
+    }
 };
 
 // only var because we need to store pointers to it, it should never be modified.
@@ -16,7 +32,7 @@ var empty_group = [_]i8{Ctrl.sentinel} ++ [_]i8{Ctrl.empty} ** (group_size - 1);
 pub fn RawHashMap(
     comptime K: type,
     comptime V: type,
-    comptime hash: fn (K) u32,
+    comptime hash_fn: fn (K) u32,
     comptime eql: fn (K, K) bool,
 ) type {
     return struct {
@@ -27,38 +43,76 @@ pub fn RawHashMap(
             value: value,
         };
 
-        const Storage = struct {
-            storage: []u8,
-
-            fn allocate(allocator: *std.mem.Allocator, ctrl_count: usize,
-
-            fn ctrls(self: *Storage) []i8 {
-
-            }
-        };
-
         allocator: *std.mem.Allocator,
-        ctrls: [*]i8,
         slots: ?[*]KV,
+        ctrls: [*]i8,
         size: usize,
         capacity: usize,
 
+        /// Create a new, empty hash map.
         pub fn init(allocator: *std.mem.Allocator) Self {
             return Self{
                 .allocator = allocator,
-                .ctrls = &empty_group,
                 .slots = null,
+                .ctrls = &empty_group,
                 .size = 0,
                 .capacity = 0,
             };
         }
 
+        /// Free all the allocated memory and reset to the initial, empty state.
         pub fn deinit(self: *Self) void {
             if (self.capacity == 0) return;
+
+            var alloc: []u8 = undefined;
+            alloc.ptr = @ptrCast([*]u8, self.slots);
+            alloc.len = self.allocSize();
+            self.allocator.free(alloc);
+
+            self.slots = null;
+            self.ctrls = &empty_group;
+            self.size = 0;
+            self.capacity = 0;
+        }
+
+        fn allocSize(capacity: usize) usize {
+            return (@sizeOf(KV) + @sizeOf(i8)) * capacity + group_size + 1;
         }
 
         fn rehash(self: *Self, target: usize) void {
             if (target == 0 and self.capacity == 0) return;
+            if (target == 0 and self.size == 0) {
+                self.deinit();
+                return;
+            }
+        }
+
+        fn resize(self: *Self, new_capacity: usize) !void {
+            std.debug.assert(isValidCapacity(new_capacity));
+
+            const old_slots = self.slots;
+            const old_ctrls = self.ctrls;
+            const old_capacity = self.capacity;
+            defer if (old_capacity != 0) {
+                var alloc: []u8 = undefined;
+                alloc.ptr = @ptrCast([*]u8, old_slots);
+                alloc.len = allocSize(old_capacity);
+                self.allocator.free(alloc);
+            };
+
+            self.capacity = new_capacity;
+            const alloc = try self.allocator.allocAdvanced(u8, @alignOf(KV), allocSize(new_capacity), .exact);
+            self.slots = @ptrCast([*]KV, alloc.ptr);
+            self.ctrls = @ptrCast([*]i8, alloc.ptr + self.capacity * @sizeOf(KV));
+
+            var total_probe_length: usize = 0;
+            var i: usize = 0;
+            while (i != old_capacity) : (i += 1) {
+                if (Ctrl.isFull(old_ctrls[i])) {
+                    const hash = hash_fn(old_slots[i]);
+                    // TODO
+                }
+            }
         }
     };
 }
