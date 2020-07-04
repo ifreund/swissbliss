@@ -7,6 +7,7 @@ export fn add(a: i32, b: i32) i32 {
 
 test "" {
     _ = @import("bit_mask.zig");
+    _ = @import("Group.zig");
 }
 
 test "basic add functionality" {

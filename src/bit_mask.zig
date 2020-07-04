@@ -1,13 +1,13 @@
 const std = @import("std");
 
 /// A simple abstraction over a bitmask allowing for nice iteration.
-fn BitMask(comptime T: type) type {
+pub fn BitMask(comptime T: type) type {
     return struct {
         const Self = @This();
 
         /// An unsigned integer type with the minimum number of bits needed to
         /// represent the bit count of T.
-        const BitIndex = std.meta.IntType(false, 32 - @clz(u32, T.bit_count));
+        const BitIndex = std.meta.Int(false, 32 - @clz(u32, T.bit_count));
 
         mask: T,
 
